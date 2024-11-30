@@ -1,63 +1,82 @@
 class LinkedInSignInSerializer(serializers.Serializer):
     code = serializers.CharField(required=True, write_only=True)
 
-    def get_linkedin_access_token(self, code) -> dict:
-        """Generate LinkedIn access token using the code."""
-        client_id = ""
-        client_secret = ""
+    def send_request(self, method, url, headers=None) -> dict:
+        """
+        Method for send HTTP requests and handle errors.
+        """
+        try:
+            method_requests = {"POST": requests.post, "GET": requests.get}
+            response = method_requests.get(method.upper())(url, headers=headers)
+            response_data = response.json()
+
+            # Raise an error for non-200 status codes
+            if response.status_code != 200:
+                response_data["status_code"] = response.status_code
+                raise ValueError(response_data)
+
+            return response_data
+
+        except Exception as e:
+            raise serializers.ValidationError(e)
+
+    def fetch_access_token(self, code) -> dict:
+        """
+        Fetch LinkedIn access token using the provided authorization code.
+        """
+        client_id = "86cut14s0g5ayc"
+        client_secret = "WPL_AP1.cLaBxeTBms9Xh629.uXCj0Q=="
         redirect_uri = "http://localhost:3000/linkedin"
         headers = {"Content-Type": "application/x-www-form-urlencoded"}
-        url = f"""https://www.linkedin.com/oauth/v2/accessToken?grant_type=authorization_code&code={code}&client_id={client_id}&client_secret={client_secret}&redirect_uri={redirect_uri}"""
 
-        try:
-            response = requests.post(url, headers=headers)
-            json_response = response.json()
-            # If invalid request raise an error
-            if response.status_code != 200:
-                raise ValueError(json_response)
-            # Return the valid response
-            return json_response
+        # Generate the access token URL
+        url = (
+            f"https://www.linkedin.com/oauth/v2/accessToken?"
+            f"grant_type=authorization_code&code={code}&client_id={client_id}"
+            f"&client_secret={client_secret}&redirect_uri={redirect_uri}"
+        )
 
-        except Exception as e:
-            raise serializers.ValidationError(e)
+        return self.send_request("POST", url, headers=headers)
 
-    def get_user_linkedin_profile(self, access_token) -> dict:
-        """Get LinkedIn user profile using the access token."""
-        headers = {"Authorization": f"Bearer {access_token}"}
+    def fetch_user_profile(self) -> dict:
+        """
+        Fetch LinkedIn user profile information using the access token.
+        """
         url = "https://api.linkedin.com/v2/me"
-        try:
-            response = requests.get(url, headers=headers)
-            json_response = response.json()
-            if response.status_code != 200:
-                raise ValueError(json_response)
+        return self.send_request("GET", url, headers=self.headers)
 
-            return json_response
+    def fetch_user_email(self) -> dict:
+        """
+        Fetch LinkedIn user email information using the access token.
+        """
+        url = "https://api.linkedin.com/v2/emailAddress?q=members&projection=(elements*(handle~))"
+        return self.send_request("GET", url, headers=self.headers)
 
-        except Exception as e:
-            raise serializers.ValidationError(e)
-
-    def get_linkedin_userinfo(self, access_token) -> dict:
-        """Get LinkedIn user information using the access token."""
-        headers = {"Authorization": f"Bearer {access_token}"}
+    def fetch_user_info(self) -> dict:
+        """
+        Fetch LinkedIn user information using the access token.
+        """
         url = "https://api.linkedin.com/v2/userinfo"
-        try:
-            response = requests.get(url, headers=headers)
-            json_response = response.json()
-            if response.status_code != 200:
-                raise ValueError(json_response)
+        return self.send_request("GET", url, headers=self.headers)
 
-            return json_response
+    def validate_code(self, value):
+        """
+        Validate the provided LinkedIn authorization code and return user info.
+        """
+        linkedin_access_token = self.fetch_access_token(value).get("access_token")
+        self.headers = {"Authorization": f"Bearer {linkedin_access_token}"}
+        user_info = self.fetch_user_info()
 
-        except Exception as e:
-            raise serializers.ValidationError(e)
-
-    def validate_code(self, code):
-        """Check if the code is valid."""
-        linkedin_access_token = self.get_linkedin_access_token(code).get("access_token")
-        linkedin_userinfo = self.get_linkedin_userinfo(linkedin_access_token)
-        # Return user information if the code is valid
-        return linkedin_userinfo
+        return user_info
 
     def create(self, validated_data):
+        """
+        Create a new user instance using the validated data.
+        """
         userinfo = validated_data.pop("code")
+
+        """
+        We can create a new user instance here using the validated data.
+        """
+
         return validated_data
